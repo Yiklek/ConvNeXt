@@ -57,11 +57,16 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             loss = criterion(output, targets)
 
         loss_value = loss.item()
-
+        # print("=====>>>>", loss_value)
         if not math.isfinite(loss_value): # this could trigger if using AMP
             print("Loss is {}, stopping training".format(loss_value))
             assert math.isfinite(loss_value)
-
+        # for name, parms in model.named_parameters():
+        #     print('==> name', name)
+        #     print('==> para', parms)
+        #     print('==> grad_requires', parms.requires_grad)
+        #     print('==> grad_value', parms.grad)
+        # print("===> end")
         if use_amp:
             # this attribute is added by timm on one optimizer (adahessian)
             is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
@@ -78,10 +83,20 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             loss.backward()
             if (data_iter_step + 1) % update_freq == 0:
                 optimizer.step()
+                # torch.cuda.synchronize()
+                # f = open("grad.log", "a+")
+                # print("===> start", file=f)
+                # for name, parms in model.named_parameters():
+                #     print('==> name', name, file=f)
+                #     print('==> para', torch.mean(parms), file=f)
+                #     # print('==> grad_requires', parms.requires_grad)
+                #     print('==> grad_value', torch.mean(parms.grad), file=f)
+                # print("===> end", file=f)
+                # f.flush()
+                # f.close()
                 optimizer.zero_grad()
                 if model_ema is not None:
                     model_ema.update(model)
-
         torch.cuda.synchronize()
 
         if mixup_fn is None:
@@ -159,15 +174,15 @@ def evaluate(data_loader, model, device, use_amp=False):
             output = model(images)
             loss = criterion(output, target)
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
+        acc1,_ = accuracy(output, target, topk=(1,2))
+        # print("======>>>>", acc1.item())
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        # metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'
+          .format(top1=metric_logger.acc1, losses=metric_logger.loss))
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
